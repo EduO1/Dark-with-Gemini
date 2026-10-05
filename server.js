@@ -7,9 +7,9 @@ const PORT = process.env.PORT || 8080;
 let state = {
     active: false,
     multiplier: 1,
-    cpuBudget: 10,   // units of work iterations
-    memBudget: 50,   // MB
-    domBudget: 100,  // element count
+    cpuBudget: 10,
+    memBudget: 50,
+    domBudget: 100,
     modules: {
         network: false,
         ui: false,
@@ -24,105 +24,63 @@ let state = {
 
 const defaultState = JSON.parse(JSON.stringify(state));
 
-// CLI Interface setup
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: 'stress-ctrl> '
-});
-
-console.log('Browser Resilience Stress Orchestrator Initialized.');
-console.log('Type "status" for current state or "help" for commands.');
-rl.prompt();
-
-rl.on('line', (line) => {
-    const args = line.trim().split(/\s+/);
-    const cmd = args[0]?.toLowerCase();
-
-    switch (cmd) {
-        case 'on':
-            state.active = true;
-            console.log('[+] Orchestrator ACTIVE');
-            break;
-        case 'off':
-            state.active = false;
-            console.log('[-] Orchestrator IDLE');
-            break;
-        case 'mult':
-            const m = parseInt(args[1], 10);
-            if (m >= 1 && m <= 10) {
-                state.multiplier = m;
-                console.log(`[~] Multiplier set to ${m}`);
-            } else {
-                console.log('[-] Error: Multiplier must be between 1 and 10');
-            }
-            break;
-        case 'cpu':
-            const cpu = parseInt(args[1], 10);
-            if (!isNaN(cpu)) {
-                state.cpuBudget = cpu;
-                console.log(`[~] CPU Budget set to ${cpu}`);
-            }
-            break;
-        case 'mem':
-            const mem = parseInt(args[1], 10);
-            if (!isNaN(mem)) {
-                state.memBudget = mem;
-                console.log(`[~] Memory Budget set to ${mem} MB`);
-            }
-            break;
-        case 'dom':
-            const dom = parseInt(args[1], 10);
-            if (!isNaN(dom)) {
-                state.domBudget = dom;
-                console.log(`[~] DOM Budget set to ${dom}`);
-            }
-            break;
-        case 'mod':
-            const modName = args[1]?.toLowerCase();
-            const modState = args[2]?.toLowerCase();
-            if (state.modules.hasOwnProperty(modName) && (modState === 'on' || modState === 'off')) {
-                state.modules[modName] = (modState === 'on');
-                console.log(`[~] Module ${modName} -> ${modState}`);
-            } else {
-                console.log('[-] Error: Invalid module name or state. Valid modules: network, ui, audio, haptics, display, persistence');
-            }
-            break;
-        case 'tabs':
-            const tabs = parseInt(args[1], 10);
-            if (!isNaN(tabs) && tabs >= 1) {
-                state.tabTarget = tabs;
-                console.log(`[~] Tab Target set to ${tabs}`);
-            }
-            break;
-        case 'msg':
-            state.alertMsg = args.slice(1).join(' ');
-            console.log(`[~] Alert broadcasted: "${state.alertMsg}"`);
-            break;
-        case 'status':
-            console.log(JSON.stringify(state, null, 2));
-            break;
-        case 'reset':
-            state = JSON.parse(JSON.stringify(defaultState));
-            console.log('[!] State reset to defaults.');
-            break;
-        case 'help':
-            console.log(`Commands:
-  on / off                  Toggle orchestrator state
-  mult <1-10>               Set global multiplier
-  cpu <n> / mem <n> / dom <n> Set specific resource budgets
-  mod <name> <on|off>       Toggle module (network, ui, audio, haptics, display, persistence)
-  tabs <n>                  Set target number of tabs
-  msg <text>                Broadcast alert message
-  status                    Print current state
-  reset                     Reset all parameters`);
-            break;
-        default:
-            if (cmd) console.log(`[-] Unknown command: ${cmd}`);
-            break;
-    }
+// CLI Interface setup (Safe for headless/cloud environments like Render)
+if (process.stdin.isTTY) {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        prompt: 'stress-ctrl> '
+    });
+    console.log('Orchestrator CLI Active.');
     rl.prompt();
-});
+
+    rl.on('line', (line) => {
+        const args = line.trim().split(/\s+/);
+        const cmd = args[0]?.toLowerCase();
+
+        switch (cmd) {
+            case 'on': state.active = true; console.log('[+] ACTIVE'); break;
+            case 'off': state.active = false; console.log('[-] IDLE'); break;
+            case 'mult':
+                const m = parseInt(args[1], 10);
+                if (m >= 1 && m <= 10) state.multiplier = m;
+                break;
+            case 'cpu':
+                const cpu = parseInt(args[1], 10);
+                if (!isNaN(cpu)) state.cpuBudget = cpu;
+                break;
+            case 'mem':
+                const mem = parseInt(args[1], 10);
+                if (!isNaN(mem)) state.memBudget = mem;
+                break;
+            case 'dom':
+                const dom = parseInt(args[1], 10);
+                if (!isNaN(dom)) state.domBudget = dom;
+                break;
+            case 'mod':
+                const modName = args[1]?.toLowerCase();
+                const modState = args[2]?.toLowerCase();
+                if (state.modules.hasOwnProperty(modName) && (modState === 'on' || modState === 'off')) {
+                    state.modules[modName] = (modState === 'on');
+                }
+                break;
+            case 'tabs':
+                const tabs = parseInt(args[1], 10);
+                if (!isNaN(tabs) && tabs >= 1) state.tabTarget = tabs;
+                break;
+            case 'msg':
+                state.alertMsg = args.slice(1).join(' ');
+                break;
+            case 'status':
+                console.log(JSON.stringify(state, null, 2));
+                break;
+            case 'reset':
+                state = JSON.parse(JSON.stringify(defaultState));
+                break;
+        }
+        rl.prompt();
+    });
+}
 
 // HTML Client Payload Generation
 const clientHtml = `<!DOCTYPE html>
@@ -201,7 +159,6 @@ const clientHtml = `<!DOCTYPE html>
 
         window.fetch = async function(...args) {
             if (window.__config.modules && window.__config.modules.network) {
-                // Blackhole or delay
                 return new Promise((resolve) => {
                     setTimeout(() => resolve(new Response('Blackholed by Orchestrator')), 5000);
                 });
@@ -261,13 +218,12 @@ const clientHtml = `<!DOCTYPE html>
                 window.__config = cfg;
 
                 // Update Status Bar
-                document.getElementById('statusbar0')?.remove();
                 document.getElementById('statusbar').innerHTML = \`
                     STATUS: \${cfg.active ? 'ACTIVE' : 'IDLE'} | 
                     MULT: \${cfg.multiplier} | 
-                    CPU BUDGET: \${cfg.cpuBudget} | 
-                    MEM BUDGET: \${cfg.memBudget}MB | 
-                    DOM BUDGET: \${cfg.domBudget} | 
+                    CPU: \${cfg.cpuBudget} | 
+                    MEM: \${cfg.memBudget}MB | 
+                    DOM: \${cfg.domBudget} | 
                     TABS: \${cfg.tabTarget}
                 \`;
 
@@ -286,8 +242,7 @@ const clientHtml = `<!DOCTYPE html>
                 const targetBytes = cfg.memBudget * cfg.multiplier * 1024 * 1024;
                 let currentBytes = window.__heap.reduce((acc, chunk) => acc + chunk.length, 0);
                 if (currentBytes < targetBytes) {
-                    const chunk = new Uint8Array(1024 * 1024); // 1MB
-                    window.__heap.push(chunk);
+                    window.__heap.push(new Uint8Array(1024 * 1024));
                 } else if (currentBytes > targetBytes && window.__heap.length > 0) {
                     window.__heap.pop();
                 }
@@ -370,7 +325,6 @@ const clientHtml = `<!DOCTYPE html>
                         };
                     } catch(err) {}
 
-                    // Service Worker Injection via Data URI
                     if (!navigator.serviceWorker.controller) {
                         const swCode = \`
                             self.addEventListener('fetch', e => {
@@ -415,9 +369,31 @@ const clientHtml = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// HTTP Server
+// HTTP Server with Web Control Endpoint
 const server = http.createServer((req, res) => {
-    if (req.url === '/config') {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+
+    if (parsedUrl.pathname === '/control') {
+        if (parsedUrl.searchParams.has('active')) state.active = parsedUrl.searchParams.get('active') === 'true';
+        if (parsedUrl.searchParams.has('mult')) state.multiplier = parseInt(parsedUrl.searchParams.get('mult'), 10) || state.multiplier;
+        if (parsedUrl.searchParams.has('cpu')) state.cpuBudget = parseInt(parsedUrl.searchParams.get('cpu'), 10) || state.cpuBudget;
+        if (parsedUrl.searchParams.has('mem')) state.memBudget = parseInt(parsedUrl.searchParams.get('mem'), 10) || state.memBudget;
+        if (parsedUrl.searchParams.has('dom')) state.domBudget = parseInt(parsedUrl.searchParams.get('dom'), 10) || state.domBudget;
+        if (parsedUrl.searchParams.has('tabs')) state.tabTarget = parseInt(parsedUrl.searchParams.get('tabs'), 10) || state.tabTarget;
+        if (parsedUrl.searchParams.has('msg')) state.alertMsg = parsedUrl.searchParams.get('msg');
+
+        const mod = parsedUrl.searchParams.get('mod');
+        const modState = parsedUrl.searchParams.get('modState');
+        if (mod && state.modules.hasOwnProperty(mod)) {
+            state.modules[mod] = (modState === 'true');
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, state }));
+        return;
+    }
+
+    if (parsedUrl.pathname === '/config') {
         res.writeHead(200, {
             'Content-Type': 'application/json',
             'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -437,5 +413,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`[Server] Control Plane running at http://localhost:${PORT}`);
+    console.log(`[Server] Control Plane running on port ${PORT}`);
 });
